@@ -71,9 +71,10 @@ button {
     transition: all 0.5s;
 }
 
-.fach.eingelagert { background: #f5a623; }  /* Paket vorhanden */
-.fach.abgeholt { background: #28a745; color: white; }  /* Paket abgeholt */
+.fach.eingelagert { background: #f5a623; }  
+.fach.abgeholt { background: #28a745; color: white; }  
 .fach.geoeffnet { transform: scale(1.2); z-index: 10; background: #ffeb3b; }
+
 .paket {
     width: 60px;
     height: 40px;
@@ -93,129 +94,141 @@ button {
     <h1>📦 RP-Pakstation</h1>
     <input type="text" id="paketID" placeholder="SCH-123456">
     <input type="text" id="empfaenger" placeholder="Dein Name">
-    <button onclick="paketAbholen()">Bestätigen</button>
+    <button id="btnAbholen">Bestätigen</button>
     <div id="ergebnis"></div>
 
     <div id="fachRaster"></div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/supabase.min.js"></script>
-<script>
-const supabaseUrl = "https://djcjaojwtampvfceuvfj.supabase.co";
-const supabaseKey = "sb_publishable_Iz4y0T-WdQ-X3D2pViUKjg_i7g1AHn0";
-const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+<!-- Supabase JS -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/supabase.min.js" defer></script>
 
-let pakete = [];
-const fachAnzahl = 30;
-const fachRaster = document.getElementById("fachRaster");
+<script defer>
+document.addEventListener("DOMContentLoaded", async () => {
 
-// Raster erstellen
-for (let i = 0; i < fachAnzahl; i++) {
-    const div = document.createElement("div");
-    div.className = "fach";
-    div.dataset.index = i;
-    div.textContent = i + 1;
-    fachRaster.appendChild(div);
-}
-
-// Pakete von Supabase laden
-async function ladePakete() {
-    const { data, error } = await supabase
-        .from('pakete')
-        .select('*');
-
-    if (error) {
-        console.error("Fehler beim Laden der Pakete:", error);
-        return;
-    }
-
-    pakete = data;
-    renderFaecher();
-}
-
-// Fächer rendern
-function renderFaecher() {
-    document.querySelectorAll(".fach").forEach(div => {
-        const idx = parseInt(div.dataset.index);
-        const paket = pakete.find(p => p.fachnummer === idx);
-        div.innerHTML = div.dataset.index + 1; // Fachnummer
-        div.className = "fach"; // Reset
-        if (paket) {
-            div.classList.add(paket.status);
-            if (paket.status === "eingelagert" || paket.status === "geoeffnet") {
-                if (!div.querySelector(".paket")) {
-                    const pakDiv = document.createElement("div");
-                    pakDiv.className = "paket";
-                    pakDiv.textContent = "📦";
-                    div.appendChild(pakDiv);
-                }
-            }
-        }
+    // === Supabase Initialisierung ===
+    const supabaseUrl = "DEINE_SUPABASE_URL";
+    const supabaseKey = "DEIN_SUPABASE_PUBLIC_KEY";
+    const supabase = supabase.createClient(supabaseUrl, supabaseKey, {
+        auth: { persistSession: false } // verhindert Tracking-Prevention Probleme
     });
-}
 
-// Paket abholen
-async function paketAbholen() {
-    const id = document.getElementById("paketID").value.trim();
-    const empfaengerName = document.getElementById("empfaenger").value.trim();
+    // === Variablen ===
+    let pakete = [];
+    const fachAnzahl = 30;
+    const fachRaster = document.getElementById("fachRaster");
     const ergebnis = document.getElementById("ergebnis");
 
-    if (!id || !empfaengerName) {
-        ergebnis.textContent = "Bitte ID und Name eingeben!";
-        return;
+    // Raster erstellen
+    for (let i = 0; i < fachAnzahl; i++) {
+        const div = document.createElement("div");
+        div.className = "fach";
+        div.dataset.index = i;
+        div.textContent = i + 1;
+        fachRaster.appendChild(div);
     }
 
-    const paket = pakete.find(p => p.id === id);
-    if (!paket) {
-        ergebnis.textContent = "Paket nicht gefunden!";
-        return;
-    }
-    if (paket.empfaenger.toLowerCase() !== empfaengerName.toLowerCase()) {
-        ergebnis.textContent = "Name stimmt nicht!";
-        return;
-    }
-    if (paket.status === "abgeholt") {
-        ergebnis.textContent = "Paket wurde bereits abgeholt!";
-        return;
-    }
-
-    // Paket animiert öffnen
-    paket.status = "geoeffnet";
-    renderFaecher();
-
-    const fachDiv = document.querySelector(`.fach[data-index='${paket.fachnummer}']`);
-    const pakDiv = fachDiv.querySelector(".paket");
-
-    // Paket anklickbar machen
-    pakDiv.style.cursor = "pointer";
-    pakDiv.onclick = async () => {
-        // Status in Supabase updaten
-        const { error } = await supabase
+    // Pakete aus Supabase laden
+    async function ladePakete() {
+        const { data, error } = await supabase
             .from('pakete')
-            .update({ status: 'abgeholt', timestamp: new Date().toISOString() })
-            .eq('id', paket.id);
+            .select('*');
 
         if (error) {
-            console.error("Fehler beim Abholen:", error);
-            ergebnis.textContent = "Fehler beim Abholen!";
+            console.error("Fehler beim Laden der Pakete:", error);
+            ergebnis.textContent = "Fehler beim Laden der Pakete!";
             return;
         }
 
-        // Lokal updaten
-        paket.status = "abgeholt";
-        pakDiv.remove();
+        pakete = data;
         renderFaecher();
-        ergebnis.textContent = `✅ Paket für ${paket.empfaenger} abgeholt!`;
-    };
+    }
 
-    document.getElementById("paketID").value = "";
-    document.getElementById("empfaenger").value = "";
-}
+    // Fächer rendern
+    function renderFaecher() {
+        document.querySelectorAll(".fach").forEach(div => {
+            const idx = parseInt(div.dataset.index);
+            const paket = pakete.find(p => p.fachnummer === idx);
+            div.innerHTML = div.dataset.index + 1; // Fachnummer
+            div.className = "fach"; // Reset
 
-// Pakete direkt beim Laden der Seite abrufen
-ladePakete();
+            if (paket) {
+                div.classList.add(paket.status);
+                if (paket.status === "eingelagert" || paket.status === "geoeffnet") {
+                    if (!div.querySelector(".paket")) {
+                        const pakDiv = document.createElement("div");
+                        pakDiv.className = "paket";
+                        pakDiv.textContent = "📦";
+                        div.appendChild(pakDiv);
+                    }
+                }
+            }
+        });
+    }
+
+    // Paket abholen
+    async function paketAbholen() {
+        const id = document.getElementById("paketID").value.trim();
+        const empfaengerName = document.getElementById("empfaenger").value.trim();
+
+        if (!id || !empfaengerName) {
+            ergebnis.textContent = "Bitte ID und Name eingeben!";
+            return;
+        }
+
+        const paket = pakete.find(p => p.id === id);
+        if (!paket) {
+            ergebnis.textContent = "Paket nicht gefunden!";
+            return;
+        }
+        if (paket.empfaenger.toLowerCase() !== empfaengerName.toLowerCase()) {
+            ergebnis.textContent = "Name stimmt nicht!";
+            return;
+        }
+        if (paket.status === "abgeholt") {
+            ergebnis.textContent = "Paket wurde bereits abgeholt!";
+            return;
+        }
+
+        // Paket animiert öffnen
+        paket.status = "geoeffnet";
+        renderFaecher();
+
+        const fachDiv = document.querySelector(`.fach[data-index='${paket.fachnummer}']`);
+        const pakDiv = fachDiv.querySelector(".paket");
+
+        pakDiv.style.cursor = "pointer";
+        pakDiv.onclick = async () => {
+            // Status in Supabase aktualisieren
+            const { error } = await supabase
+                .from('pakete')
+                .update({ status: 'abgeholt', timestamp: new Date().toISOString() })
+                .eq('id', paket.id);
+
+            if (error) {
+                console.error("Fehler beim Abholen:", error);
+                ergebnis.textContent = "Fehler beim Abholen!";
+                return;
+            }
+
+            // Lokal updaten
+            paket.status = "abgeholt";
+            pakDiv.remove();
+            renderFaecher();
+            ergebnis.textContent = `✅ Paket für ${paket.empfaenger} abgeholt!`;
+        };
+
+        document.getElementById("paketID").value = "";
+        document.getElementById("empfaenger").value = "";
+    }
+
+    document.getElementById("btnAbholen").addEventListener("click", paketAbholen);
+
+    // Pakete direkt beim Laden der Seite abrufen
+    ladePakete();
+
+});
 </script>
-
 
 </body>
 </html>
