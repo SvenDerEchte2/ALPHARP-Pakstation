@@ -40,7 +40,7 @@ button {
 }
 #ergebnis, #loginErgebnis, #postlerErgebnis {
     margin: 10px 0;
-    height: 20px;
+    height: auto;
 }
 #fachRaster {
     display: grid;
@@ -102,8 +102,11 @@ hr { margin: 30px 0; border: 1px solid #ccc; }
         <h3>📦 Paket hinzufügen</h3>
         <input type="text" id="neuPaketID" placeholder="SCH-123456">
         <input type="text" id="neuEmpfaenger" placeholder="Empfänger Name">
+        <input type="text" id="neuAbsender" placeholder="Absender Name">
+        <input type="text" id="neuGroesse" placeholder="Größe (z.B. Klein, Mittel, Groß)">
         <input type="number" id="neuFachnummer" placeholder="Fachnummer">
         <button id="btnHinzufuegen">Hinzufügen</button>
+
         <h3>🗑️ Paket löschen</h3>
         <input type="text" id="delPaketID" placeholder="Paket ID">
         <button id="btnLoeschen">Löschen</button>
@@ -148,11 +151,14 @@ document.addEventListener("DOMContentLoaded", () => {
         document.querySelectorAll(".fach").forEach(div => {
             const idx = Number(div.dataset.index);
             const paket = pakete.find(p => p.fachnummer === idx);
+
             div.className = "fach";
             div.innerHTML = idx + 1;
+
             if (!paket) return;
-            div.classList.add(paket.status);
-            if (paket.status !== "abgeholt") {
+
+            if (paket.status === "eingelagert" || paket.status === "geoeffnet") {
+                div.classList.add(paket.status);
                 const p = document.createElement("div");
                 p.className = "paket";
                 p.textContent = "📦";
@@ -171,8 +177,10 @@ document.addEventListener("DOMContentLoaded", () => {
         const name = empfaenger.value.trim();
         const paket = pakete.find(p => p.id === id);
         if (!paket || paket.empfaenger.toLowerCase() !== name.toLowerCase()) {
-            ergebnis.textContent = "❌ Daten falsch"; return;
+            ergebnis.textContent = "❌ Daten falsch"; 
+            return;
         }
+
         await fetch(`${SUPABASE_URL}/rest/v1/pakete?id=eq.${paket.id}`, {
             method: "PATCH",
             headers: {
@@ -183,10 +191,21 @@ document.addEventListener("DOMContentLoaded", () => {
             },
             body: JSON.stringify({status:"abgeholt", timestamp: new Date().toISOString()})
         });
+
         paket.status = "abgeholt";
         renderFaecher();
-        ergebnis.textContent = `✅ Paket für ${paket.empfaenger} abgeholt`;
-        paketID.value = ""; empfaenger.value = "";
+
+        // Alle Paketinfos anzeigen
+        ergebnis.innerHTML = `
+            ✅ Paket abgeholt!<br>
+            <strong>Empfänger:</strong> ${paket.empfaenger}<br>
+            <strong>Absender:</strong> ${paket.absender || "-"}<br>
+            <strong>Größe:</strong> ${paket.groesse || "-"}<br>
+            <strong>Sendungsnummer:</strong> ${paket.id}
+        `;
+
+        paketID.value = "";
+        empfaenger.value = "";
     });
 
     // Postler Login
@@ -219,15 +238,23 @@ document.addEventListener("DOMContentLoaded", () => {
     // Paket hinzufügen
     const neuPaketID = document.getElementById("neuPaketID");
     const neuEmpfaenger = document.getElementById("neuEmpfaenger");
+    const neuAbsender = document.getElementById("neuAbsender");
+    const neuGroesse = document.getElementById("neuGroesse");
     const neuFachnummer = document.getElementById("neuFachnummer");
     const btnHinzufuegen = document.getElementById("btnHinzufuegen");
     const postlerErgebnis = document.getElementById("postlerErgebnis");
 
     btnHinzufuegen.addEventListener("click", async () => {
         const id = neuPaketID.value.trim();
-        const empfaenger = neuEmpfaenger.value.trim();
+        const empfaengerVal = neuEmpfaenger.value.trim();
+        const absenderVal = neuAbsender.value.trim();
+        const groesseVal = neuGroesse.value.trim();
         const fach = parseInt(neuFachnummer.value);
-        if (!id||!empfaenger||isNaN(fach)) { postlerErgebnis.textContent="⚠️ Alle Felder ausfüllen"; return; }
+
+        if (!id || !empfaengerVal || !absenderVal || !groesseVal || isNaN(fach)) {
+            postlerErgebnis.textContent="⚠️ Alle Felder ausfüllen"; 
+            return; 
+        }
 
         const res = await fetch(`${SUPABASE_URL}/rest/v1/pakete`, {
             method:"POST",
@@ -237,12 +264,21 @@ document.addEventListener("DOMContentLoaded", () => {
                 "Content-Type":"application/json",
                 "Prefer":"return=minimal"
             },
-            body:JSON.stringify({id, empfaenger, fachnummer:fach, status:"eingelagert", timestamp:new Date().toISOString()})
+            body:JSON.stringify({
+                id,
+                empfaenger: empfaengerVal,
+                absender: absenderVal,
+                groesse: groesseVal,
+                fachnummer: fach,
+                status:"eingelagert",
+                timestamp:new Date().toISOString()
+            })
         });
+
         if(!res.ok){ postlerErgebnis.textContent="❌ Fehler beim Hinzufügen"; return; }
 
         postlerErgebnis.textContent = `✅ Paket ${id} hinzugefügt`;
-        neuPaketID.value = ""; neuEmpfaenger.value=""; neuFachnummer.value="";
+        neuPaketID.value = ""; neuEmpfaenger.value=""; neuAbsender.value=""; neuGroesse.value=""; neuFachnummer.value="";
         ladePakete();
     });
 
