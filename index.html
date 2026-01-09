@@ -12,7 +12,6 @@ body {
     justify-content: center;
     padding: 50px;
 }
-
 #pakstation {
     background: #f5f5f5;
     color: #333;
@@ -22,9 +21,7 @@ body {
     text-align: center;
     box-shadow: 0 10px 30px rgba(0,0,0,0.4);
 }
-
-h1 { text-align: center; }
-
+h1, h2, h3 { text-align: center; }
 input {
     width: 200px;
     padding: 10px;
@@ -33,7 +30,6 @@ input {
     border: none;
     font-size: 16px;
 }
-
 button {
     padding: 10px 20px;
     border: none;
@@ -42,12 +38,10 @@ button {
     background: #ffcc00;
     cursor: pointer;
 }
-
-#ergebnis {
+#ergebnis, #loginErgebnis, #postlerErgebnis {
     margin: 10px 0;
     height: 20px;
 }
-
 #fachRaster {
     display: grid;
     grid-template-columns: repeat(10, 80px);
@@ -55,7 +49,6 @@ button {
     justify-content: center;
     margin-top: 20px;
 }
-
 .fach {
     width: 80px;
     height: 60px;
@@ -70,11 +63,9 @@ button {
     overflow: hidden;
     transition: all 0.5s;
 }
-
 .fach.eingelagert { background: #f5a623; }  
 .fach.abgeholt { background: #28a745; color: white; }  
 .fach.geoeffnet { transform: scale(1.2); z-index: 10; background: #ffeb3b; }
-
 .paket {
     width: 60px;
     height: 40px;
@@ -86,32 +77,44 @@ button {
     position: absolute;
     transition: all 0.5s;
 }
+hr { margin: 30px 0; border: 1px solid #ccc; }
 </style>
 </head>
 <body>
-
 <div id="pakstation">
     <h1>📦 RP-Pakstation</h1>
     <input type="text" id="paketID" placeholder="SCH-123456">
     <input type="text" id="empfaenger" placeholder="Dein Name">
     <button id="btnAbholen">Bestätigen</button>
     <div id="ergebnis"></div>
-
     <div id="fachRaster"></div>
-</div>
 
-<!-- Supabase Library -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/supabase.min.js"></script>
+    <hr>
+    <h2>🚚 Postler Login</h2>
+    <div id="loginPanel">
+        <input type="text" id="loginUser" placeholder="Benutzername">
+        <input type="password" id="loginPass" placeholder="Passwort">
+        <button id="btnLogin">Login</button>
+        <div id="loginErgebnis"></div>
+    </div>
+
+    <div id="postlerPanel" style="display:none; margin-top:20px;">
+        <h3>📦 Paket hinzufügen</h3>
+        <input type="text" id="neuPaketID" placeholder="SCH-123456">
+        <input type="text" id="neuEmpfaenger" placeholder="Empfänger Name">
+        <input type="number" id="neuFachnummer" placeholder="Fachnummer">
+        <button id="btnHinzufuegen">Hinzufügen</button>
+        <h3>🗑️ Paket löschen</h3>
+        <input type="text" id="delPaketID" placeholder="Paket ID">
+        <button id="btnLoeschen">Löschen</button>
+        <div id="postlerErgebnis"></div>
+    </div>
+</div>
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-
-    // === Supabase initialisieren ===
-    const supabase = supabase.createClient(
-        "DEINE_SUPABASE_URL",       // <--- hier ersetzen
-        "DEIN_SUPABASE_PUBLIC_KEY",  // <--- hier ersetzen
-        { auth: { persistSession: false } } // verhindert Tracking-Prevention block
-    );
+    const SUPABASE_URL = "https://djcjaojwtampvfceuvfj.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_Iz4y0T-WdQ-X3D2pViUKjg_i7g1AHn0";
 
     const fachRaster = document.getElementById("fachRaster");
     const ergebnis = document.getElementById("ergebnis");
@@ -129,98 +132,145 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Pakete laden
     async function ladePakete() {
-        const { data, error } = await supabase.from('pakete').select('*');
-        if (error) {
-            console.error("Fehler beim Laden der Pakete:", error);
-            ergebnis.textContent = "Fehler beim Laden der Pakete!";
-            return;
-        }
-        pakete = data;
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/pakete`, {
+            headers: {
+                "apikey": SUPABASE_KEY,
+                "Authorization": `Bearer ${SUPABASE_KEY}`,
+                "Accept": "application/json"
+            }
+        });
+        if (!res.ok) { ergebnis.textContent = "❌ Supabase REST Fehler"; return; }
+        pakete = await res.json();
         renderFaecher();
     }
 
-    // Raster rendern
     function renderFaecher() {
         document.querySelectorAll(".fach").forEach(div => {
-            const idx = parseInt(div.dataset.index);
+            const idx = Number(div.dataset.index);
             const paket = pakete.find(p => p.fachnummer === idx);
-            div.innerHTML = div.dataset.index + 1;
             div.className = "fach";
-
-            if (paket) {
-                div.classList.add(paket.status);
-                if (paket.status === "eingelagert" || paket.status === "geoeffnet") {
-                    if (!div.querySelector(".paket")) {
-                        const pakDiv = document.createElement("div");
-                        pakDiv.className = "paket";
-                        pakDiv.textContent = "📦";
-                        div.appendChild(pakDiv);
-                    }
-                }
+            div.innerHTML = idx + 1;
+            if (!paket) return;
+            div.classList.add(paket.status);
+            if (paket.status !== "abgeholt") {
+                const p = document.createElement("div");
+                p.className = "paket";
+                p.textContent = "📦";
+                div.appendChild(p);
             }
         });
     }
 
     // Paket abholen
-    async function paketAbholen() {
-        const id = document.getElementById("paketID").value.trim();
-        const empfaengerName = document.getElementById("empfaenger").value.trim();
+    const paketID = document.getElementById("paketID");
+    const empfaenger = document.getElementById("empfaenger");
+    const btnAbholen = document.getElementById("btnAbholen");
 
-        if (!id || !empfaengerName) {
-            ergebnis.textContent = "Bitte ID und Name eingeben!";
-            return;
-        }
-
+    btnAbholen.addEventListener("click", async () => {
+        const id = paketID.value.trim();
+        const name = empfaenger.value.trim();
         const paket = pakete.find(p => p.id === id);
-        if (!paket) {
-            ergebnis.textContent = "Paket nicht gefunden!";
-            return;
+        if (!paket || paket.empfaenger.toLowerCase() !== name.toLowerCase()) {
+            ergebnis.textContent = "❌ Daten falsch"; return;
         }
-        if (paket.empfaenger.toLowerCase() !== empfaengerName.toLowerCase()) {
-            ergebnis.textContent = "Name stimmt nicht!";
-            return;
-        }
-        if (paket.status === "abgeholt") {
-            ergebnis.textContent = "Paket wurde bereits abgeholt!";
-            return;
-        }
-
-        paket.status = "geoeffnet";
+        await fetch(`${SUPABASE_URL}/rest/v1/pakete?id=eq.${paket.id}`, {
+            method: "PATCH",
+            headers: {
+                "apikey": SUPABASE_KEY,
+                "Authorization": `Bearer ${SUPABASE_KEY}`,
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal"
+            },
+            body: JSON.stringify({status:"abgeholt", timestamp: new Date().toISOString()})
+        });
+        paket.status = "abgeholt";
         renderFaecher();
+        ergebnis.textContent = `✅ Paket für ${paket.empfaenger} abgeholt`;
+        paketID.value = ""; empfaenger.value = "";
+    });
 
-        const fachDiv = document.querySelector(`.fach[data-index='${paket.fachnummer}']`);
-        const pakDiv = fachDiv.querySelector(".paket");
+    // Postler Login
+    const loginUser = document.getElementById("loginUser");
+    const loginPass = document.getElementById("loginPass");
+    const btnLogin = document.getElementById("btnLogin");
+    const loginErgebnis = document.getElementById("loginErgebnis");
+    const postlerPanel = document.getElementById("postlerPanel");
 
-        pakDiv.style.cursor = "pointer";
-        pakDiv.onclick = async () => {
-            const { error } = await supabase
-                .from('pakete')
-                .update({ status: 'abgeholt', timestamp: new Date().toISOString() })
-                .eq('id', paket.id);
+    btnLogin.addEventListener("click", async () => {
+        const username = loginUser.value.trim();
+        const password = loginPass.value.trim();
+        if (!username || !password) { loginErgebnis.textContent="⚠️ Bitte ausfüllen"; return; }
 
-            if (error) {
-                console.error("Fehler beim Abholen:", error);
-                ergebnis.textContent = "Fehler beim Abholen!";
-                return;
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/postler?username=eq.${username}&password=eq.${password}`, {
+            headers: {
+                "apikey": SUPABASE_KEY,
+                "Authorization": `Bearer ${SUPABASE_KEY}`,
+                "Accept": "application/json"
             }
+        });
+        const data = await res.json();
+        if (data.length===0) { loginErgebnis.textContent="❌ Falscher Benutzer oder Passwort"; return; }
 
-            paket.status = "abgeholt";
-            pakDiv.remove();
-            renderFaecher();
-            ergebnis.textContent = `✅ Paket für ${paket.empfaenger} abgeholt!`;
-        };
+        loginErgebnis.textContent = `✅ Willkommen ${username}`;
+        postlerPanel.style.display = "block";
+        loginUser.value = ""; loginPass.value = "";
+    });
 
-        document.getElementById("paketID").value = "";
-        document.getElementById("empfaenger").value = "";
-    }
+    // Paket hinzufügen
+    const neuPaketID = document.getElementById("neuPaketID");
+    const neuEmpfaenger = document.getElementById("neuEmpfaenger");
+    const neuFachnummer = document.getElementById("neuFachnummer");
+    const btnHinzufuegen = document.getElementById("btnHinzufuegen");
+    const postlerErgebnis = document.getElementById("postlerErgebnis");
 
-    document.getElementById("btnAbholen").addEventListener("click", paketAbholen);
+    btnHinzufuegen.addEventListener("click", async () => {
+        const id = neuPaketID.value.trim();
+        const empfaenger = neuEmpfaenger.value.trim();
+        const fach = parseInt(neuFachnummer.value);
+        if (!id||!empfaenger||isNaN(fach)) { postlerErgebnis.textContent="⚠️ Alle Felder ausfüllen"; return; }
 
-    // Pakete beim Laden abrufen
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/pakete`, {
+            method:"POST",
+            headers:{
+                "apikey":SUPABASE_KEY,
+                "Authorization":`Bearer ${SUPABASE_KEY}`,
+                "Content-Type":"application/json",
+                "Prefer":"return=minimal"
+            },
+            body:JSON.stringify({id, empfaenger, fachnummer:fach, status:"eingelagert", timestamp:new Date().toISOString()})
+        });
+        if(!res.ok){ postlerErgebnis.textContent="❌ Fehler beim Hinzufügen"; return; }
+
+        postlerErgebnis.textContent = `✅ Paket ${id} hinzugefügt`;
+        neuPaketID.value = ""; neuEmpfaenger.value=""; neuFachnummer.value="";
+        ladePakete();
+    });
+
+    // Paket löschen
+    const delPaketID = document.getElementById("delPaketID");
+    const btnLoeschen = document.getElementById("btnLoeschen");
+
+    btnLoeschen.addEventListener("click", async () => {
+        const id = delPaketID.value.trim();
+        if(!id){ postlerErgebnis.textContent="⚠️ Paket ID eingeben"; return; }
+
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/pakete?id=eq.${id}`, {
+            method:"DELETE",
+            headers:{
+                "apikey":SUPABASE_KEY,
+                "Authorization":`Bearer ${SUPABASE_KEY}`,
+                "Prefer":"return=minimal"
+            }
+        });
+        if(!res.ok){ postlerErgebnis.textContent="❌ Fehler beim Löschen"; return; }
+
+        postlerErgebnis.textContent = `✅ Paket ${id} gelöscht`;
+        delPaketID.value="";
+        ladePakete();
+    });
+
     ladePakete();
-
 });
 </script>
-
 </body>
 </html>
