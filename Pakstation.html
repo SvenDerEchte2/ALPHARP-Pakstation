@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>RP-Pakstation Visual</title>
+<style>
+body {
+    font-family: Arial, sans-serif;
+    background: #2c2f33;
+    color: #fff;
+    display: flex;
+    justify-content: center;
+    padding: 50px;
+}
+
+#pakstation {
+    background: #f5f5f5;
+    color: #333;
+    padding: 20px;
+    border-radius: 20px;
+    width: 1000px;
+    text-align: center;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+}
+
+h1 { text-align: center; }
+
+input {
+    width: 200px;
+    padding: 10px;
+    margin: 5px;
+    border-radius: 10px;
+    border: none;
+    font-size: 16px;
+}
+
+button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 10px;
+    font-size: 16px;
+    background: #ffcc00;
+    cursor: pointer;
+}
+
+#ergebnis {
+    margin: 10px 0;
+    height: 20px;
+}
+
+#fachRaster {
+    display: grid;
+    grid-template-columns: repeat(10, 80px);
+    grid-gap: 10px;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+.fach {
+    width: 80px;
+    height: 60px;
+    background: #ddd;
+    border-radius: 5px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-weight: bold;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.5s;
+}
+
+.fach.eingelagert { background: #f5a623; }  /* Paket vorhanden */
+.fach.abgeholt { background: #28a745; color: white; }  /* Paket abgeholt */
+.fach.geoeffnet { transform: scale(1.2); z-index: 10; background: #ffeb3b; }
+.paket {
+    width: 60px;
+    height: 40px;
+    background: #fff;
+    border-radius: 5px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: absolute;
+    transition: all 0.5s;
+}
+</style>
+</head>
+<body>
+
+<div id="pakstation">
+    <h1>📦 RP-Pakstation</h1>
+    <input type="text" id="paketID" placeholder="SCH-123456">
+    <input type="text" id="empfaenger" placeholder="Dein Name">
+    <button onclick="paketAbholen()">Bestätigen</button>
+    <div id="ergebnis"></div>
+
+    <div id="fachRaster"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/supabase.min.js"></script>
+<script>
+const supabaseUrl = "https://djcjaojwtampvfceuvfj.supabase.co";
+const supabaseKey = "sb_publishable_Iz4y0T-WdQ-X3D2pViUKjg_i7g1AHn0";
+const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+let pakete = [];
+const fachAnzahl = 30;
+const fachRaster = document.getElementById("fachRaster");
+
+// Raster erstellen
+for (let i = 0; i < fachAnzahl; i++) {
+    const div = document.createElement("div");
+    div.className = "fach";
+    div.dataset.index = i;
+    div.textContent = i + 1;
+    fachRaster.appendChild(div);
+}
+
+// Pakete von Supabase laden
+async function ladePakete() {
+    const { data, error } = await supabase
+        .from('pakete')
+        .select('*');
+
+    if (error) {
+        console.error("Fehler beim Laden der Pakete:", error);
+        return;
+    }
+
+    pakete = data;
+    renderFaecher();
+}
+
+// Fächer rendern
+function renderFaecher() {
+    document.querySelectorAll(".fach").forEach(div => {
+        const idx = parseInt(div.dataset.index);
+        const paket = pakete.find(p => p.fachnummer === idx);
+        div.innerHTML = div.dataset.index + 1; // Fachnummer
+        div.className = "fach"; // Reset
+        if (paket) {
+            div.classList.add(paket.status);
+            if (paket.status === "eingelagert" || paket.status === "geoeffnet") {
+                if (!div.querySelector(".paket")) {
+                    const pakDiv = document.createElement("div");
+                    pakDiv.className = "paket";
+                    pakDiv.textContent = "📦";
+                    div.appendChild(pakDiv);
+                }
+            }
+        }
+    });
+}
+
+// Paket abholen
+async function paketAbholen() {
+    const id = document.getElementById("paketID").value.trim();
+    const empfaengerName = document.getElementById("empfaenger").value.trim();
+    const ergebnis = document.getElementById("ergebnis");
+
+    if (!id || !empfaengerName) {
+        ergebnis.textContent = "Bitte ID und Name eingeben!";
+        return;
+    }
+
+    const paket = pakete.find(p => p.id === id);
+    if (!paket) {
+        ergebnis.textContent = "Paket nicht gefunden!";
+        return;
+    }
+    if (paket.empfaenger.toLowerCase() !== empfaengerName.toLowerCase()) {
+        ergebnis.textContent = "Name stimmt nicht!";
+        return;
+    }
+    if (paket.status === "abgeholt") {
+        ergebnis.textContent = "Paket wurde bereits abgeholt!";
+        return;
+    }
+
+    // Paket animiert öffnen
+    paket.status = "geoeffnet";
+    renderFaecher();
+
+    const fachDiv = document.querySelector(`.fach[data-index='${paket.fachnummer}']`);
+    const pakDiv = fachDiv.querySelector(".paket");
+
+    // Paket anklickbar machen
+    pakDiv.style.cursor = "pointer";
+    pakDiv.onclick = async () => {
+        // Status in Supabase updaten
+        const { error } = await supabase
+            .from('pakete')
+            .update({ status: 'abgeholt', timestamp: new Date().toISOString() })
+            .eq('id', paket.id);
+
+        if (error) {
+            console.error("Fehler beim Abholen:", error);
+            ergebnis.textContent = "Fehler beim Abholen!";
+            return;
+        }
+
+        // Lokal updaten
+        paket.status = "abgeholt";
+        pakDiv.remove();
+        renderFaecher();
+        ergebnis.textContent = `✅ Paket für ${paket.empfaenger} abgeholt!`;
+    };
+
+    document.getElementById("paketID").value = "";
+    document.getElementById("empfaenger").value = "";
+}
+
+// Pakete direkt beim Laden der Seite abrufen
+ladePakete();
+</script>
+
+
+</body>
+</html>
