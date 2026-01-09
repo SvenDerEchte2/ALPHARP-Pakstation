@@ -100,18 +100,20 @@ button {
     <div id="fachRaster"></div>
 </div>
 
-<!-- Supabase JS -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/supabase.min.js" defer></script>
-
-<script defer>
+<script type="module">
 document.addEventListener("DOMContentLoaded", async () => {
 
-    // === Supabase Initialisierung ===
-    const supabaseUrl = "DEINE_SUPABASE_URL";
-    const supabaseKey = "DEIN_SUPABASE_PUBLIC_KEY";
-    const supabase = supabase.createClient(supabaseUrl, supabaseKey, {
-        auth: { persistSession: false } // verhindert Tracking-Prevention Probleme
+    // === Supabase dynamisch importieren ===
+    const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/supabase.min.js');
+
+    const supabaseUrl = "DEINE_SUPABASE_URL";  // <--- hier ersetzen
+    const supabaseKey = "DEIN_SUPABASE_PUBLIC_KEY"; // <--- hier ersetzen
+
+    const supabase = createClient(supabaseUrl, supabaseKey, {
+        auth: { persistSession: false } // verhindert Tracking-Prevention Warnungen
     });
+
+    console.log("Supabase bereit:", supabase);
 
     // === Variablen ===
     let pakete = [];
@@ -211,7 +213,6 @@ document.addEventListener("DOMContentLoaded", async () => {
                 return;
             }
 
-            // Lokal updaten
             paket.status = "abgeholt";
             pakDiv.remove();
             renderFaecher();
@@ -224,7 +225,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     document.getElementById("btnAbholen").addEventListener("click", paketAbholen);
 
-    // Pakete direkt beim Laden der Seite abrufen
+    // Pakete beim Laden abrufen
     ladePakete();
 
 });
