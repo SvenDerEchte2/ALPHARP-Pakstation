@@ -100,26 +100,23 @@ button {
     <div id="fachRaster"></div>
 </div>
 
-<script type="module">
-document.addEventListener("DOMContentLoaded", async () => {
+<!-- Supabase Library -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/supabase.min.js"></script>
 
-    // === Supabase dynamisch importieren ===
-    const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/supabase.min.js');
+<script>
+document.addEventListener("DOMContentLoaded", () => {
 
-    const supabaseUrl = "DEINE_SUPABASE_URL";  // <--- hier ersetzen
-    const supabaseKey = "DEIN_SUPABASE_PUBLIC_KEY"; // <--- hier ersetzen
+    // === Supabase initialisieren ===
+    const supabase = supabase.createClient(
+        "DEINE_SUPABASE_URL",       // <--- hier ersetzen
+        "DEIN_SUPABASE_PUBLIC_KEY",  // <--- hier ersetzen
+        { auth: { persistSession: false } } // verhindert Tracking-Prevention block
+    );
 
-    const supabase = createClient(supabaseUrl, supabaseKey, {
-        auth: { persistSession: false } // verhindert Tracking-Prevention Warnungen
-    });
-
-    console.log("Supabase bereit:", supabase);
-
-    // === Variablen ===
-    let pakete = [];
-    const fachAnzahl = 30;
     const fachRaster = document.getElementById("fachRaster");
     const ergebnis = document.getElementById("ergebnis");
+    const fachAnzahl = 30;
+    let pakete = [];
 
     // Raster erstellen
     for (let i = 0; i < fachAnzahl; i++) {
@@ -130,29 +127,25 @@ document.addEventListener("DOMContentLoaded", async () => {
         fachRaster.appendChild(div);
     }
 
-    // Pakete aus Supabase laden
+    // Pakete laden
     async function ladePakete() {
-        const { data, error } = await supabase
-            .from('pakete')
-            .select('*');
-
+        const { data, error } = await supabase.from('pakete').select('*');
         if (error) {
             console.error("Fehler beim Laden der Pakete:", error);
             ergebnis.textContent = "Fehler beim Laden der Pakete!";
             return;
         }
-
         pakete = data;
         renderFaecher();
     }
 
-    // Fächer rendern
+    // Raster rendern
     function renderFaecher() {
         document.querySelectorAll(".fach").forEach(div => {
             const idx = parseInt(div.dataset.index);
             const paket = pakete.find(p => p.fachnummer === idx);
-            div.innerHTML = div.dataset.index + 1; // Fachnummer
-            div.className = "fach"; // Reset
+            div.innerHTML = div.dataset.index + 1;
+            div.className = "fach";
 
             if (paket) {
                 div.classList.add(paket.status);
@@ -192,7 +185,6 @@ document.addEventListener("DOMContentLoaded", async () => {
             return;
         }
 
-        // Paket animiert öffnen
         paket.status = "geoeffnet";
         renderFaecher();
 
@@ -201,7 +193,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         pakDiv.style.cursor = "pointer";
         pakDiv.onclick = async () => {
-            // Status in Supabase aktualisieren
             const { error } = await supabase
                 .from('pakete')
                 .update({ status: 'abgeholt', timestamp: new Date().toISOString() })
